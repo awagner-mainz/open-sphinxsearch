@@ -19,6 +19,10 @@ use DI\Container;
 use Slim\Factory\AppFactory;
 use Slim\Views\Twig;
 use Slim\Views\TwigMiddleware;
+use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
+use Slim\Exception\HttpNotFoundException;
+// use Slim\Middleware\ErrorMiddleware;
 
 require __DIR__ . '/../vendor/autoload.php';
 
@@ -28,6 +32,8 @@ require __DIR__ . '/../vendor/autoload.php';
 
 $configuration = json_decode(file_get_contents(__DIR__ . '/../configuration.json'));
 
+// var_dump($configuration);
+
 /////////////////////////////////////////////////////////////////////////////
 // slim app settings
 /////////////////////////////////////////////////////////////////////////////
@@ -36,22 +42,24 @@ $configuration = json_decode(file_get_contents(__DIR__ . '/../configuration.json
 $container = new Container();
 AppFactory::setContainer($container);
 
-// Set view in Container
-$container->set('view', function() {
-    return Twig::create($configuration->slim->templatesPath, ['cache' => 'path/to/cache']);
-});
-
 // Create App
 $app = AppFactory::create();
+
+// Set view in Container
+$container->set('view', function() {
+    global $configuration;
+    return Twig::create($configuration->slim->templatesPath, ['cache' => __DIR__ . '/../cache']);
+});
 
 // Add Twig-View Middleware
 $app->add(TwigMiddleware::createFromContainer($app));
 
 
 // enable template based debugging
-if($configuration->twig->debug === true) {
-    $app->view->parserExtensions = array(new \Twig_Extension_Debug());
-    $app->view->parserOptions = ['debug' => true];
+if($configuration->twig->debug) {
+    global $container;
+    $container->get('view')->addExtension(new \Twig\Extension\DebugExtension());
+    $container->get('view')->parserOptions = ['debug' => true];
 }
 
 // halt if no valid configuration could be loaded
@@ -61,17 +69,32 @@ if (is_object($configuration) === false) {
     $app->halt(500, 'Configuration error: No configuration.json file could be found');
 }
 
-// custom 404 handler
-$app->notFound(function () use ($app) {
-    $app->render('404.xml', array('rooturi' => $app->request->getRootUri()));
+// Custom 404 handler
+/* $custom404Handler = function (
+    ServerRequestInterface $request,
+    Throwable $exception,
+    bool $displayErrorDetails,
+    bool $logErrors,
+    bool $logErrorDetails,
+    ?LoggerInterface $logger = null
+    ) {
+    try {
+        return $handler->handle($request);
+    } catch (HttpNotFoundException $httpException) {
+        $app->render('404.xml', array('rooturi' => $request->getRootUri()));
+    }
 });
+*/
+$app->addRoutingMiddleware();
+$errorMiddleware = $app->addErrorMiddleware(true, true, true);
+//$errorMiddleware->setDefaultErrorHandler()
 
 ////////////////////////////////////////////////////////////////////////////
 // sphinxClient settings
 /////////////////////////////////////////////////////////////////////////////
 
 // sphinx client settings per request by configuration and/or URL parameters
-$app->container->singleton('sphinxClient', function () use ($app) {
+$container->set('sphinxClient', function () {
 
     // set the calling index
 
@@ -490,9 +513,9 @@ $app->get('/', function ($indexes = array()) use ($app) {
 });
 
 // routes into defined indexes; each index can have opensearch description, search, suggest, keywords and excerpts endpoints
-$app->group('/:index', function () use ($app) {
-
-    $app->get('/', function ($index) use ($app) {
+$app->group('/:index', function () {
+    global $app;
+    $app->get('/', function ($index) {
 
         (file_exists($app->view()->getTemplatePathname($index . '_description.xml'))) ?
             $template = $index . '_description.xml' :
@@ -510,7 +533,7 @@ $app->group('/:index', function () use ($app) {
         }
     });
 
-    $app->map('/search', function ($index) use ($app) {
+    $app->get('/search', function ($index) {
 
         (file_exists($app->view()->getTemplatePathname($index . '_response.xml'))) ?
             $template = $index . '_response.xml' :
@@ -558,7 +581,7 @@ $app->group('/:index', function () use ($app) {
             $app->notFound();
         }
 
-    })->via('GET');
+    });
 
     $app->get('/suggest', function ($index) use ($app) {
 
@@ -708,6 +731,6 @@ $app->group('/:index', function () use ($app) {
 /////////////////////////////////////////////////////////////////////////////
 
 #$app->response->headers->set('Content-Type', 'application/xml');
-$app->response->headers->set('Content-Type', 'text/xml');
-$app->view()->setTemplatesDirectory($app->settings['configuration']->slim->templatesPath);
+// TODO: re-enable this: $app->response->headers->set('Content-Type', 'text/xml');
+// $app->view()->setTemplatesDirectory($app->settings['configuration']->slim->templatesPath);
 $app->run();

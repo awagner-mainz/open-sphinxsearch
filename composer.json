@@ -19,6 +19,9 @@
     "require": {
         "slim/slim": "4.*",
         "slim/twig-view": "3.*",
-        "gigablah/sphinxphp": "2.0.*"
+        "gigablah/sphinxphp": "2.0.*",
+        "php-di/php-di": "^7.0",
+        "httpsoft/http-message": "^1.1",
+        "httpsoft/http-server-request": "^1.1"
     }
 }
