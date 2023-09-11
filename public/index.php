@@ -15,6 +15,11 @@ namespace Digicademy\OpenSphinxSearch;
  * Licensed under MIT License (MIT)
  */
 
+use DI\Container;
+use Slim\Factory\AppFactory;
+use Slim\Views\Twig;
+use Slim\Views\TwigMiddleware;
+
 require __DIR__ . '/../vendor/autoload.php';
 
 /////////////////////////////////////////////////////////////////////////////
@@ -27,11 +32,21 @@ $configuration = json_decode(file_get_contents(__DIR__ . '/../configuration.json
 // slim app settings
 /////////////////////////////////////////////////////////////////////////////
 
-// initialize Slim
-$app = new \Slim\Slim(array(
-    'view' => new \Slim\Views\Twig(),
-    'configuration' => $configuration
-));
+// Create Container
+$container = new Container();
+AppFactory::setContainer($container);
+
+// Set view in Container
+$container->set('view', function() {
+    return Twig::create($configuration->slim->templatesPath, ['cache' => 'path/to/cache']);
+});
+
+// Create App
+$app = AppFactory::create();
+
+// Add Twig-View Middleware
+$app->add(TwigMiddleware::createFromContainer($app));
+
 
 // enable template based debugging
 if($configuration->twig->debug === true) {
